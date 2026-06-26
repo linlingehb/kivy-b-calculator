@@ -18,16 +18,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          command: buildozer android debug
-          buildozer_version: stable
+      - name: Fix permissions for Docker user
+        run: |
+          # kivy/buildozer 容器内用户为 user(uid=1000)，需要确保源码可读写
+          sudo chown -R 1000:1000 "$PWD"
+
+      - name: Pull kivy/buildozer Docker image
+        run: docker pull kivy/buildozer:latest
+
+      - name: Build Debug APK with Docker
+        run: |
+          mkdir -p "$HOME/.buildozer"
+          docker run --rm \
+            -v "$HOME/.buildozer":/home/user/.buildozer \
+            -v "$PWD":/home/user/hostcwd \
+            -w /home/user/hostcwd \
+            kivy/buildozer:latest \
+            android debug
+
+      - name: Fix APK permissions
+        run: |
+          # 容器内生成文件的 owner 可能是容器内的 user(1000)，改回 runner 用户以便上传 artifact
+          sudo chown -R $(id -u):$(id -g) "$PWD"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: kivy-calculator-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
           if-no-files-found: error
