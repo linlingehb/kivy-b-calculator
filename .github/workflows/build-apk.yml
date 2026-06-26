@@ -18,11 +18,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Fix permissions for Docker user
-        run: |
-          # kivy/buildozer 容器内用户为 user(uid=1000)，需要确保源码可读写
-          sudo chown -R 1000:1000 "$PWD"
-
       - name: Pull kivy/buildozer Docker image
         run: docker pull kivy/buildozer:latest
 
@@ -30,20 +25,35 @@ jobs:
         run: |
           mkdir -p "$HOME/.buildozer"
           docker run --rm \
+            --user 1000:1000 \
+            -e HOME=/home/user \
+            -e CI=true \
             -v "$HOME/.buildozer":/home/user/.buildozer \
             -v "$PWD":/home/user/hostcwd \
             -w /home/user/hostcwd \
             kivy/buildozer:latest \
-            android debug
+            android debug --verbose
 
-      - name: Fix APK permissions
+      - name: Fix APK permissions (artifacts only)
+        if: always()
         run: |
-          # 容器内生成文件的 owner 可能是容器内的 user(1000)，改回 runner 用户以便上传 artifact
-          sudo chown -R $(id -u):$(id -g) "$PWD"
+          sudo chown -R $(id -u):$(id -g) bin || true
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kivy-calculator-apk
           path: bin/*.apk
           if-no-files-found: error
+
+      - name: Upload buildozer logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-logs
+          path: |
+            .buildozer/android/platform/*/buildozer.log
+            .buildozer/android/platform/*/log
+            .buildozer/*.log
+          if-no-files-found: warn
