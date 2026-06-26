@@ -1,0 +1,71 @@
+name: Build Kivy APK with Buildozer
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    # 支持手动触发：在 GitHub 仓库的 Actions 页面点击 "Run workflow"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 首次构建可能耗时较长，最长 6 小时
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip python3-venv build-essential git zip unzip \
+            openjdk-17-jdk autoconf automake libtool libtool-bin pkg-config \
+            zlib1g-dev libncurses-dev libtinfo6 libffi-dev libssl-dev \
+            libsqlite3-dev libbz2-dev libreadline-dev libgdbm-dev \
+            libgdbm-compat-dev llvm liblzma-dev xclip python3-virtualenv
+
+      - name: Cache Buildozer build directory
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
+
+      - name: Create venv and install Buildozer/Cython
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install buildozer cython
+
+      - name: Verify Buildozer
+        run: |
+          source .venv/bin/activate
+          buildozer --version
+
+      - name: Build Debug APK
+        run: |
+          source .venv/bin/activate
+          # -v 输出详细日志，方便排查问题
+          buildozer -v android debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kivy-calculator-apk
+          path: bin/*.apk
+          if-no-files-found: error
+
+      - name: List generated APK
+        run: |
+          echo "Generated APK files:"
+          ls -lh bin/*.apk
