@@ -6,13 +6,12 @@ on:
   pull_request:
     branches: [main, master]
   workflow_dispatch:
-    # 支持手动触发：在 GitHub 仓库的 Actions 页面点击 "Run workflow"
 
 jobs:
   build:
     name: Build for Android
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 首次构建可能耗时较长，最长 6 小时
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
@@ -21,11 +20,16 @@ jobs:
       - name: Pull kivy/buildozer Docker image
         run: docker pull kivy/buildozer:latest
 
+      - name: Make source writable for container user
+        run: |
+          # Only change ownership of source files (exclude .git)
+          sudo find "$PWD" -mindepth 1 -maxdepth 1 ! -name '.git' -exec chown -R 1000:1000 {} + 2>/dev/null || true
+
       - name: Build Debug APK with Docker
         run: |
           mkdir -p "$HOME/.buildozer"
+          sudo chown -R 1000:1000 "$HOME/.buildozer"
           docker run --rm \
-            --user 1000:1000 \
             -e HOME=/home/user \
             -e CI=true \
             -v "$HOME/.buildozer":/home/user/.buildozer \
@@ -33,11 +37,6 @@ jobs:
             -w /home/user/hostcwd \
             kivy/buildozer:latest \
             android debug --verbose
-
-      - name: Fix APK permissions (artifacts only)
-        if: always()
-        run: |
-          sudo chown -R $(id -u):$(id -g) bin || true
 
       - name: Upload APK artifact
         if: success()
